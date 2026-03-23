@@ -35,17 +35,31 @@ jobs:
               continue
             fi
 
-            x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
-            arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
+            # A present app repo must be a valid OSTree archive-z2 repository.
+            test -f "${app_dir}/repo/config"
+            test -d "${app_dir}/repo/objects"
+            grep -q '^mode=archive-z2$' "${app_dir}/repo/config"
 
-            if [ -f "${x86_ref}" ]; then
-              grep -q "^Url=https://${domain}/" "${x86_ref}"
-              grep -q "^Branch=stable$" "${x86_ref}"
-            fi
+            found_ref=0
+            while IFS= read -r ref_file; do
+              found_ref=1
+              grep -q '^\[Flatpak Ref\]$' "${ref_file}"
+              grep -q '^Name=app/' "${ref_file}"
+              grep -q '^Branch=' "${ref_file}"
+              grep -q '^Url=https://' "${ref_file}"
+              grep -q "^Url=https://${domain}/" "${ref_file}"
+              grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
+              grep -q '^SuggestRemoteName=' "${ref_file}"
+              grep -q '^IsRuntime=false$' "${ref_file}"
 
-            if [ -f "${arm_ref}" ]; then
-              grep -q "^Url=https://${domain}/" "${arm_ref}"
-              grep -q "^Branch=stable$" "${arm_ref}"
+              if grep -q '^GPGKey=' "${ref_file}"; then
+                grep -q '^NoGPGVerify=false$' "${ref_file}"
+              fi
+            done < <(find "${app_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
+
+            if [ "${found_ref}" -eq 0 ]; then
+              echo "Missing .flatpakref file(s) in ${app_dir}" >&2
+              exit 1
             fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
@@ -78,17 +92,24 @@ jobs:
             exit 0
           fi
 
-          cat > chillboio.flatpakrepo <<EOF
-          [Flatpak Repo]
-          Title=Chillboi Studios Flatpak Repository
-          Url=https://${domain}/repo/
-          Homepage=https://github.com/Chillboio-Studios/flatpak-ota
-          Comment=Official Chillboi Studios Flatpak OTA remote
-          Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients.
-          DefaultBranch=stable
-          SuggestRemoteName=chillboio
-          NoGPGVerify=true
-          EOF
+          gpg_key_base64="${{ secrets.FLATPAK_REPO_GPG_KEY_BASE64 }}"
+
+          {
+            echo "[Flatpak Repo]"
+            echo "Title=Chillboi Studios Flatpak Repository"
+            echo "Url=https://${domain}/repo/"
+            echo "Homepage=https://github.com/Chillboio-Studios/flatpak-ota"
+            echo "Comment=Official Chillboi Studios Flatpak OTA remote"
+            echo "Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients."
+            echo "DefaultBranch=stable"
+            echo "SuggestRemoteName=chillboio"
+            if [ -n "${gpg_key_base64}" ]; then
+              echo "GPGKey=${gpg_key_base64}"
+              echo "NoGPGVerify=false"
+            else
+              echo "NoGPGVerify=true"
+            fi
+          } > chillboio.flatpakrepo
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -101,16 +122,31 @@ jobs:
         run: |
           set -euxo pipefail
           test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
           test -f chillboio.flatpakrepo
-          grep -q "^Url=https://flatpak-ota.chillboiostudios.com/repo/$" chillboio.flatpakrepo
+          grep -q '^\[Flatpak Repo\]$' chillboio.flatpakrepo
+          grep -q '^Title=' chillboio.flatpakrepo
+          grep -q "^Url=https://${domain}/repo/$" chillboio.flatpakrepo
+          grep -q '^Homepage=' chillboio.flatpakrepo
+          grep -q '^Comment=' chillboio.flatpakrepo
+          grep -q '^Description=' chillboio.flatpakrepo
           grep -q "^DefaultBranch=stable$" chillboio.flatpakrepo
           grep -q "^SuggestRemoteName=chillboio$" chillboio.flatpakrepo
+
+          if grep -q '^GPGKey=' chillboio.flatpakrepo; then
+            grep -q '^NoGPGVerify=false$' chillboio.flatpakrepo
+          else
+            grep -q '^NoGPGVerify=true$' chillboio.flatpakrepo
+          fi
 
       - name: Validate merged repo for Discover
         shell: bash
         run: |
           set -euxo pipefail
           test -d repo
+          test -f repo/config
+          grep -q '^mode=archive-z2$' repo/config
 
           # Bootstrap state (no published apps yet) is valid.
           if ostree --repo=repo refs | grep -q '^app/'; then
@@ -125,6 +161,10 @@ jobs:
         run: |
           set -euxo pipefail
 
+          test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
+
           found_app=0
           while IFS= read -r app_dir; do
             if [ ! -d "${app_dir}/repo" ]; then
@@ -133,17 +173,25 @@ jobs:
 
             found_app=1
 
-            x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
-            arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
+            found_ref=0
+            while IFS= read -r ref_file; do
+              found_ref=1
+              grep -q '^\[Flatpak Ref\]$' "${ref_file}"
+              grep -q '^Name=app/' "${ref_file}"
+              grep -q '^Branch=' "${ref_file}"
+              grep -q "^Url=https://${domain}/" "${ref_file}"
+              grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
+              grep -q '^SuggestRemoteName=' "${ref_file}"
+              grep -q '^IsRuntime=false$' "${ref_file}"
 
-            if [ -f "${x86_ref}" ]; then
-              grep -q "^Name=app/com.chillboiostudios.dawnchat/x86_64/stable$" "${x86_ref}"
-              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${x86_ref}"
-            fi
+              if grep -q '^GPGKey=' "${ref_file}"; then
+                grep -q '^NoGPGVerify=false$' "${ref_file}"
+              fi
+            done < <(find "${app_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
 
-            if [ -f "${arm_ref}" ]; then
-              grep -q "^Name=app/com.chillboiostudios.dawnchat/aarch64/stable$" "${arm_ref}"
-              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${arm_ref}"
+            if [ "${found_ref}" -eq 0 ]; then
+              echo "Missing published .flatpakref file(s) in ${app_dir}" >&2
+              exit 1
             fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
@@ -202,9 +250,11 @@ jobs:
 
           while IFS= read -r app_repo; do
             if [ ! -f "${app_repo}/config" ] || [ ! -d "${app_repo}/objects" ]; then
-              echo "Skipping invalid OSTree repo at ${app_repo}"
-              continue
+              echo "Invalid OSTree repo at ${app_repo}" >&2
+              exit 1
             fi
+
+            grep -q '^mode=archive-z2$' "${app_repo}/config"
 
             ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
           done < <(find apps -mindepth 2 -maxdepth 2 -type d -name repo | sort)
@@ -228,17 +278,24 @@ jobs:
             echo "${app_name}" >> .publish-root/apps/index.txt
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
-          cat > .publish-root/chillboio.flatpakrepo <<EOF
-          [Flatpak Repo]
-          Title=Chillboi Studios Flatpak Repository
-          Url=https://${domain}/repo/
-          Homepage=https://github.com/Chillboio-Studios/flatpak-ota
-          Comment=Official Chillboi Studios Flatpak OTA remote
-          Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients.
-          DefaultBranch=stable
-          SuggestRemoteName=chillboio
-          NoGPGVerify=true
-          EOF
+          gpg_key_base64="${{ secrets.FLATPAK_REPO_GPG_KEY_BASE64 }}"
+
+          {
+            echo "[Flatpak Repo]"
+            echo "Title=Chillboi Studios Flatpak Repository"
+            echo "Url=https://${domain}/repo/"
+            echo "Homepage=https://github.com/Chillboio-Studios/flatpak-ota"
+            echo "Comment=Official Chillboi Studios Flatpak OTA remote"
+            echo "Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients."
+            echo "DefaultBranch=stable"
+            echo "SuggestRemoteName=chillboio"
+            if [ -n "${gpg_key_base64}" ]; then
+              echo "GPGKey=${gpg_key_base64}"
+              echo "NoGPGVerify=false"
+            else
+              echo "NoGPGVerify=true"
+            fi
+          } > .publish-root/chillboio.flatpakrepo
 
       - name: Publish generated metadata to gh-pages
         shell: bash
