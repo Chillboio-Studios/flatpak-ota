@@ -3,7 +3,10 @@ name: Build Main Flatpak Remote
 on:
   push:
     branches:
+      - main
+      - master
       - gh-pages
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -12,7 +15,6 @@ permissions:
 jobs:
   sanity-check:
     runs-on: ubuntu-latest
-    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -47,24 +49,112 @@ jobs:
             fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
-  build-main-remote:
-    needs:
-      - sanity-check
-    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
+  validate-published:
     runs-on: ubuntu-latest
+    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        with:
-          ref: gh-pages
+
+      - name: Install validation tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ostree
+
+      - name: Validate published root metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f CNAME
+          test -f chillboio.flatpakrepo
+          grep -q "^Url=https://flatpak-ota.chillboiostudios.com/repo/$" chillboio.flatpakrepo
+          grep -q "^DefaultBranch=stable$" chillboio.flatpakrepo
+          grep -q "^SuggestRemoteName=chillboio$" chillboio.flatpakrepo
+
+      - name: Validate merged repo for Discover
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -d repo
+
+          # Bootstrap state (no published apps yet) is valid.
+          if ostree --repo=repo refs | grep -q '^app/'; then
+            test -f repo/summary
+            ostree --repo=repo refs | grep -q '^appstream/'
+          else
+            echo "No published app refs yet; skipping strict Discover checks."
+          fi
+
+      - name: Validate published app metadata and refs
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          found_app=0
+          while IFS= read -r app_dir; do
+            if [ ! -d "${app_dir}/repo" ]; then
+              continue
+            fi
+
+            found_app=1
+
+            x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
+            arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
+
+            if [ -f "${x86_ref}" ]; then
+              grep -q "^Name=app/com.chillboiostudios.dawnchat/x86_64/stable$" "${x86_ref}"
+              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${x86_ref}"
+            fi
+
+            if [ -f "${arm_ref}" ]; then
+              grep -q "^Name=app/com.chillboiostudios.dawnchat/aarch64/stable$" "${arm_ref}"
+              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${arm_ref}"
+            fi
+          done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
+
+          if [ "${found_app}" -eq 0 ]; then
+            echo "No published app repos found under apps/; bootstrap state is valid."
+          fi
+
+  build-main-remote:
+    needs:
+      - sanity-check
+      - validate-published
+    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'master'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v5
 
       - name: Install dependencies
         shell: bash
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y flatpak ostree rsync
+          sudo apt-get install -y flatpak ostree rsync git
+
+      - name: Prepare gh-pages workspace
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git clone --depth=1 "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" .gh-pages
+          cd .gh-pages
+
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch origin gh-pages
+            git checkout -B gh-pages FETCH_HEAD
+          else
+            git checkout --orphan gh-pages
+            git rm -rf . || true
+          fi
+
+          mkdir -p ..//.publish-root
+          rsync -a --exclude '.git' --exclude '.github' ./ ..//.publish-root/
 
       - name: Build merged root repository
         shell: bash
@@ -92,17 +182,17 @@ jobs:
             ostree --repo=.tmp-merged-repo refs | grep -q '^appstream/'
           fi
 
-          mkdir -p repo
-          rsync -a --delete .tmp-merged-repo/ repo/
+          mkdir -p .publish-root/repo
+          rsync -a --delete .tmp-merged-repo/ .publish-root/repo/
 
-          mkdir -p apps
-          : > apps/index.txt
+          mkdir -p .publish-root/apps
+          : > .publish-root/apps/index.txt
           while IFS= read -r app_dir; do
             app_name="$(basename "${app_dir}")"
-            echo "${app_name}" >> apps/index.txt
+            echo "${app_name}" >> .publish-root/apps/index.txt
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
-          cat > chillboio.flatpakrepo <<EOF
+          cat > .publish-root/chillboio.flatpakrepo <<EOF
           [Flatpak Repo]
           Title=Chillboi Studios Flatpak Repository
           Url=https://${domain}/repo/
@@ -114,10 +204,13 @@ jobs:
           NoGPGVerify=true
           EOF
 
-      - name: Commit updated main remote files
+      - name: Publish generated metadata to gh-pages
         shell: bash
         run: |
           set -euxo pipefail
+
+          cd .gh-pages
+          rsync -a --delete --exclude '.git' ../.publish-root/ ./
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
