@@ -1,0 +1,9 @@
+[Flatpak Ref]
+Name=app/com.chillboiostudios.dawnchat/x86_64/stable
+Branch=stable
+Title=DawnChat
+IsRuntime=false
+Url=https://flatpak-ota.chillboiostudios.com/apps/dawnchat/repo/
+RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
+SuggestRemoteName=dawnchat
+NoGPGVerify=true
