@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - gh-pages
-      - master
-      - main
   workflow_dispatch:
 
 permissions:
@@ -14,6 +12,7 @@ permissions:
 jobs:
   sanity-check:
     runs-on: ubuntu-latest
+    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -29,7 +28,10 @@ jobs:
           test -n "${domain}"
 
           while IFS= read -r app_dir; do
-            test -d "${app_dir}/repo"
+            # Empty/bootstrap app directories are allowed; validate only when repo exists.
+            if [ ! -d "${app_dir}/repo" ]; then
+              continue
+            fi
 
             x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
             arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
@@ -83,9 +85,12 @@ jobs:
 
           flatpak build-update-repo --generate-static-deltas --prune .tmp-merged-repo
 
-          # Discover/KDE Software Center rely on summary + appstream branches.
-          test -f .tmp-merged-repo/summary
-          ostree --repo=.tmp-merged-repo refs | grep -q '^appstream/'
+          # For bootstrap runs with no apps yet, appstream refs may be absent.
+          # Enforce appstream only when app refs are present.
+          if ostree --repo=.tmp-merged-repo refs | grep -q '^app/'; then
+            test -f .tmp-merged-repo/summary
+            ostree --repo=.tmp-merged-repo refs | grep -q '^appstream/'
+          fi
 
           mkdir -p repo
           rsync -a --delete .tmp-merged-repo/ repo/

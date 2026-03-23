@@ -5,11 +5,28 @@ on:
     branches:
       - gh-pages
       - main
+      - master
   pull_request:
 
 jobs:
-  validate:
+  validate-source:
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate source metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
+
+  validate-published:
+    runs-on: ubuntu-latest
+    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout
@@ -22,7 +39,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ostree
 
-      - name: Validate root metadata
+      - name: Validate published root metadata
         shell: bash
         run: |
           set -euxo pipefail
@@ -37,18 +54,27 @@ jobs:
         run: |
           set -euxo pipefail
           test -d repo
-          test -f repo/summary
-          ostree --repo=repo refs | grep -q '^appstream/'
 
-      - name: Validate app metadata and refs
+          # Bootstrap state (no published apps yet) is valid.
+          if ostree --repo=repo refs | grep -q '^app/'; then
+            test -f repo/summary
+            ostree --repo=repo refs | grep -q '^appstream/'
+          else
+            echo "No published app refs yet; skipping strict Discover checks."
+          fi
+
+      - name: Validate published app metadata and refs
         shell: bash
         run: |
           set -euxo pipefail
 
           found_app=0
           while IFS= read -r app_dir; do
+            if [ ! -d "${app_dir}/repo" ]; then
+              continue
+            fi
+
             found_app=1
-            test -d "${app_dir}/repo"
 
             x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
             arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
@@ -65,5 +91,5 @@ jobs:
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
           if [ "${found_app}" -eq 0 ]; then
-            echo "No app directories found under apps/."
+            echo "No published app repos found under apps/; bootstrap state is valid."
           fi
