@@ -6,4 +6,6 @@ IsRuntime=false
 Url=https://flatpak-ota.chillboiostudios.com/apps/dawnchat/repo/
 RuntimeRepo=https://flathub.org/repo/flathub.flatpakrepo
 SuggestRemoteName=dawnchat
+Homepage=https://github.com/Chillboio-Studios/otube-for-web
+Icon=https://flatpak-ota.chillboiostudios.com/apps/dawnchat/icon.png
 NoGPGVerify=true
