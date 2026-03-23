@@ -20,6 +20,8 @@ jobs:
         run: |
           set -euxo pipefail
           test -f CNAME
+          test -f chillboio.flatpakrepo
+          grep -q "^Url=https://flatpak-ota.chillboiostudios.com/repo/$" chillboio.flatpakrepo
 
       - name: Validate app metadata and refs
         shell: bash

@@ -1,0 +1,78 @@
+name: Build Main Flatpak Remote
+
+on:
+  push:
+    branches:
+      - gh-pages
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-main-remote:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y flatpak ostree rsync
+
+      - name: Build merged root repository
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
+
+          rm -rf .tmp-merged-repo
+          mkdir -p .tmp-merged-repo
+          ostree --repo=.tmp-merged-repo init --mode=archive-z2
+
+          while IFS= read -r app_repo; do
+            ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
+          done < <(find apps -mindepth 2 -maxdepth 2 -type d -name repo | sort)
+
+          flatpak build-update-repo --generate-static-deltas --prune .tmp-merged-repo
+
+          mkdir -p repo
+          rsync -a --delete .tmp-merged-repo/ repo/
+
+          cat > chillboio.flatpakrepo <<EOF
+          [Flatpak Repo]
+          Title=Chillboi Studios Flatpak Repository
+          Url=https://${domain}/repo/
+          Homepage=https://github.com/Chillboio-Studios/flatpak-ota
+          Comment=Official Chillboi Studios Flatpak OTA remote
+          Description=Add this remote to browse and install all Chillboi Studios Flatpak apps.
+          DefaultBranch=stable
+          NoGPGVerify=true
+          EOF
+
+      - name: Commit updated main remote files
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add repo chillboio.flatpakrepo
+
+          if git diff --cached --quiet; then
+            echo "No main remote updates to commit."
+            exit 0
+          fi
+
+          git commit -m "Update merged Flatpak remote"
+          git push origin gh-pages
