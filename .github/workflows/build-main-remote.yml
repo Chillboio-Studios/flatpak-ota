@@ -64,6 +64,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ostree
 
+      - name: Ensure root flatpakrepo exists
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
+
+          if [ -f chillboio.flatpakrepo ]; then
+            echo "chillboio.flatpakrepo already exists."
+            exit 0
+          fi
+
+          cat > chillboio.flatpakrepo <<EOF
+          [Flatpak Repo]
+          Title=Chillboi Studios Flatpak Repository
+          Url=https://${domain}/repo/
+          Homepage=https://github.com/Chillboio-Studios/flatpak-ota
+          Comment=Official Chillboi Studios Flatpak OTA remote
+          Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients.
+          DefaultBranch=stable
+          SuggestRemoteName=chillboio
+          NoGPGVerify=true
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add chillboio.flatpakrepo
+          git commit -m "Ensure chillboio.flatpakrepo exists"
+          git push origin gh-pages
+
       - name: Validate published root metadata
         shell: bash
         run: |
