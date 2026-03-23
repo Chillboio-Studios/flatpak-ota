@@ -122,7 +122,6 @@ jobs:
   build-main-remote:
     needs:
       - sanity-check
-      - validate-published
     if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'master'
     runs-on: ubuntu-latest
 
