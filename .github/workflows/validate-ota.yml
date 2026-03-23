@@ -1,0 +1,50 @@
+name: Validate OTA Repository
+
+on:
+  push:
+    branches:
+      - gh-pages
+      - main
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Validate root metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f CNAME
+
+      - name: Validate app metadata and refs
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          found_app=0
+          while IFS= read -r app_dir; do
+            found_app=1
+            test -d "${app_dir}/repo"
+
+            x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
+            arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
+
+            if [ -f "${x86_ref}" ]; then
+              grep -q "^Name=app/com.chillboiostudios.dawnchat/x86_64/stable$" "${x86_ref}"
+              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${x86_ref}"
+            fi
+
+            if [ -f "${arm_ref}" ]; then
+              grep -q "^Name=app/com.chillboiostudios.dawnchat/aarch64/stable$" "${arm_ref}"
+              grep -q "^Url=https://flatpak-ota.chillboiostudios.com/" "${arm_ref}"
+            fi
+          done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
+
+          if [ "${found_app}" -eq 0 ]; then
+            echo "No app directories found under apps/."
+          fi
