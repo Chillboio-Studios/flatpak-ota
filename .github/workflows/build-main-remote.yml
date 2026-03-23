@@ -4,13 +4,51 @@ on:
   push:
     branches:
       - gh-pages
+      - master
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  sanity-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Sanity checks
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f CNAME
+          domain="$(head -n 1 CNAME | tr -d '[:space:]')"
+          test -n "${domain}"
+
+          while IFS= read -r app_dir; do
+            test -d "${app_dir}/repo"
+
+            x86_ref="${app_dir}/com.chillboiostudios.dawnchat.flatpakref"
+            arm_ref="${app_dir}/com.chillboiostudios.dawnchat.aarch64.flatpakref"
+
+            if [ -f "${x86_ref}" ]; then
+              grep -q "^Url=https://${domain}/" "${x86_ref}"
+              grep -q "^Branch=stable$" "${x86_ref}"
+            fi
+
+            if [ -f "${arm_ref}" ]; then
+              grep -q "^Url=https://${domain}/" "${arm_ref}"
+              grep -q "^Branch=stable$" "${arm_ref}"
+            fi
+          done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
+
   build-main-remote:
+    needs:
+      - sanity-check
+    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -45,8 +83,19 @@ jobs:
 
           flatpak build-update-repo --generate-static-deltas --prune .tmp-merged-repo
 
+          # Discover/KDE Software Center rely on summary + appstream branches.
+          test -f .tmp-merged-repo/summary
+          ostree --repo=.tmp-merged-repo refs | grep -q '^appstream/'
+
           mkdir -p repo
           rsync -a --delete .tmp-merged-repo/ repo/
+
+          mkdir -p apps
+          : > apps/index.txt
+          while IFS= read -r app_dir; do
+            app_name="$(basename "${app_dir}")"
+            echo "${app_name}" >> apps/index.txt
+          done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
           cat > chillboio.flatpakrepo <<EOF
           [Flatpak Repo]
@@ -54,8 +103,9 @@ jobs:
           Url=https://${domain}/repo/
           Homepage=https://github.com/Chillboio-Studios/flatpak-ota
           Comment=Official Chillboi Studios Flatpak OTA remote
-          Description=Add this remote to browse and install all Chillboi Studios Flatpak apps.
+          Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients.
           DefaultBranch=stable
+          SuggestRemoteName=chillboio
           NoGPGVerify=true
           EOF
 
@@ -67,7 +117,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add repo chillboio.flatpakrepo
+          git add repo chillboio.flatpakrepo apps/index.txt
 
           if git diff --cached --quiet; then
             echo "No main remote updates to commit."

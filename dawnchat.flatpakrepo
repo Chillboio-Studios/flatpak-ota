@@ -1,7 +1,0 @@
-[Flatpak Repo]
-Title=Chillboi Studios Flatpak Repository
-Url=https://flatpak-ota.chillboiostudios.com/apps/dawnchat/repo/
-Homepage=https://github.com/Chillboio-Studios/flatpak-ota
-Comment=Official Chillboi0 Studios OTA remote for DawnChat
-Description=Add this remote to install and receive all Chillboio Studios Flatpak updates.
-NoGPGVerify=true

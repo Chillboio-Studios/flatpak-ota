@@ -15,6 +15,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Install validation tools
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ostree
+
       - name: Validate root metadata
         shell: bash
         run: |
@@ -22,6 +29,16 @@ jobs:
           test -f CNAME
           test -f chillboio.flatpakrepo
           grep -q "^Url=https://flatpak-ota.chillboiostudios.com/repo/$" chillboio.flatpakrepo
+          grep -q "^DefaultBranch=stable$" chillboio.flatpakrepo
+          grep -q "^SuggestRemoteName=chillboio$" chillboio.flatpakrepo
+
+      - name: Validate merged repo for Discover
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -d repo
+          test -f repo/summary
+          ostree --repo=repo refs | grep -q '^appstream/'
 
       - name: Validate app metadata and refs
         shell: bash
