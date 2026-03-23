@@ -51,7 +51,7 @@ jobs:
 
   validate-published:
     runs-on: ubuntu-latest
-    if: github.ref_name == 'gh-pages' || github.event_name == 'workflow_dispatch'
+    if: github.ref_name == 'gh-pages'
 
     steps:
       - name: Checkout
@@ -169,6 +169,11 @@ jobs:
           ostree --repo=.tmp-merged-repo init --mode=archive-z2
 
           while IFS= read -r app_repo; do
+            if [ ! -f "${app_repo}/config" ] || [ ! -d "${app_repo}/objects" ]; then
+              echo "Skipping invalid OSTree repo at ${app_repo}"
+              continue
+            fi
+
             ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
           done < <(find apps -mindepth 2 -maxdepth 2 -type d -name repo | sort)
 
