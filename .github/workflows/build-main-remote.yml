@@ -61,6 +61,13 @@ jobs:
               echo "Missing .flatpakref file(s) in ${app_dir}" >&2
               exit 1
             fi
+
+            # If bundles are published for this app, ensure names are Flatpak bundles.
+            if [ -d "${app_dir}/bundles" ]; then
+              while IFS= read -r bundle_file; do
+                test -f "${bundle_file}"
+              done < <(find "${app_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
+            fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
   validate-published:
@@ -193,6 +200,13 @@ jobs:
               echo "Missing published .flatpakref file(s) in ${app_dir}" >&2
               exit 1
             fi
+
+            # Bundles are optional, but if present they must be Flatpak files.
+            if [ -d "${app_dir}/bundles" ]; then
+              while IFS= read -r bundle_file; do
+                test -f "${bundle_file}"
+              done < <(find "${app_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
+            fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
           if [ "${found_app}" -eq 0 ]; then
@@ -308,7 +322,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add repo chillboio.flatpakrepo apps/index.txt
+          git add repo chillboio.flatpakrepo apps
 
           if git diff --cached --quiet; then
             echo "No main remote updates to commit."
