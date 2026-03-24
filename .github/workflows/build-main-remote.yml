@@ -107,11 +107,12 @@ jobs:
 
           {
             echo "[Flatpak Repo]"
-            echo "Title=Chillboi Studios Flatpak Repository"
+            echo "Title=Chillboio Studios"
             echo "Url=https://${domain}/repo/"
             echo "Homepage=https://github.com/Chillboio-Studios/flatpak-ota"
-            echo "Comment=Official Chillboi Studios Flatpak OTA remote"
-            echo "Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients."
+            echo "Comment=Central repository of Chillboio Studios Flatpak applications"
+            echo "Description=Central repository of Chillboio Studios Flatpak applications"
+            echo "Icon=https://${domain}/apps/dawnchat/icon.png"
             echo "DefaultBranch=stable"
             echo "SuggestRemoteName=chillboio"
             if [ -n "${gpg_key_base64}" ]; then
@@ -142,6 +143,7 @@ jobs:
           grep -q '^Homepage=' chillboio.flatpakrepo
           grep -q '^Comment=' chillboio.flatpakrepo
           grep -q '^Description=' chillboio.flatpakrepo
+          grep -q "^Icon=https://${domain}/apps/dawnchat/icon.png$" chillboio.flatpakrepo
           grep -q "^DefaultBranch=stable$" chillboio.flatpakrepo
           grep -q "^SuggestRemoteName=chillboio$" chillboio.flatpakrepo
 
@@ -305,11 +307,12 @@ jobs:
 
           {
             echo "[Flatpak Repo]"
-            echo "Title=Chillboi Studios Flatpak Repository"
+            echo "Title=Chillboio Studios"
             echo "Url=https://${domain}/repo/"
             echo "Homepage=https://github.com/Chillboio-Studios/flatpak-ota"
-            echo "Comment=Official Chillboi Studios Flatpak OTA remote"
-            echo "Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients."
+            echo "Comment=Central repository of Chillboio Studios Flatpak applications"
+            echo "Description=Central repository of Chillboio Studios Flatpak applications"
+            echo "Icon=https://${domain}/apps/dawnchat/icon.png"
             echo "DefaultBranch=stable"
             echo "SuggestRemoteName=chillboio"
             if [ -n "${gpg_key_base64}" ]; then
