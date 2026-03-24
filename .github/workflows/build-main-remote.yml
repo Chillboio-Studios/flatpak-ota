@@ -30,47 +30,52 @@ jobs:
           test -n "${domain}"
 
           while IFS= read -r app_dir; do
-            # Empty/bootstrap app directories are allowed; validate only when repo exists.
-            if [ ! -d "${app_dir}/repo" ]; then
-              continue
-            fi
+            found_repo=0
+            while IFS= read -r repo_dir; do
+              found_repo=1
 
-            # A present app repo must at least have config; objects may be absent
-            # in bootstrap placeholders before first publish.
-            test -f "${app_dir}/repo/config"
-            grep -q '^mode=archive-z2$' "${app_dir}/repo/config"
+              # A present app repo must at least have config; objects may be absent
+              # in bootstrap placeholders before first publish.
+              test -f "${repo_dir}/config"
+              grep -q '^mode=archive-z2$' "${repo_dir}/config"
 
-            if [ ! -d "${app_dir}/repo/objects" ]; then
-              echo "No objects directory in ${app_dir}/repo (bootstrap placeholder)."
-            fi
-
-            found_ref=0
-            while IFS= read -r ref_file; do
-              found_ref=1
-              grep -q '^\[Flatpak Ref\]$' "${ref_file}"
-              grep -q '^Name=app/' "${ref_file}"
-              grep -q '^Branch=' "${ref_file}"
-              grep -q '^Url=https://' "${ref_file}"
-              grep -q "^Url=https://${domain}/" "${ref_file}"
-              grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
-              grep -q '^SuggestRemoteName=' "${ref_file}"
-              grep -q '^IsRuntime=false$' "${ref_file}"
-
-              if grep -q '^GPGKey=' "${ref_file}"; then
-                grep -q '^NoGPGVerify=false$' "${ref_file}"
+              if [ ! -d "${repo_dir}/objects" ]; then
+                echo "No objects directory in ${repo_dir} (bootstrap placeholder)."
               fi
-            done < <(find "${app_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
 
-            if [ "${found_ref}" -eq 0 ]; then
-              echo "Missing .flatpakref file(s) in ${app_dir}" >&2
-              exit 1
-            fi
+              channel_dir="$(dirname "${repo_dir}")"
+              found_ref=0
+              while IFS= read -r ref_file; do
+                found_ref=1
+                grep -q '^\[Flatpak Ref\]$' "${ref_file}"
+                grep -q '^Name=app/' "${ref_file}"
+                grep -q '^Branch=' "${ref_file}"
+                grep -q '^Url=https://' "${ref_file}"
+                grep -q "^Url=https://${domain}/" "${ref_file}"
+                grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
+                grep -q '^SuggestRemoteName=' "${ref_file}"
+                grep -q '^IsRuntime=false$' "${ref_file}"
 
-            # If bundles are published for this app, ensure names are Flatpak bundles.
-            if [ -d "${app_dir}/bundles" ]; then
-              while IFS= read -r bundle_file; do
-                test -f "${bundle_file}"
-              done < <(find "${app_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
+                if grep -q '^GPGKey=' "${ref_file}"; then
+                  grep -q '^NoGPGVerify=false$' "${ref_file}"
+                fi
+              done < <(find "${channel_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
+
+              if [ "${found_ref}" -eq 0 ]; then
+                echo "Missing .flatpakref file(s) in ${channel_dir}" >&2
+                exit 1
+              fi
+
+              # If bundles are published for this channel, ensure names are Flatpak bundles.
+              if [ -d "${channel_dir}/bundles" ]; then
+                while IFS= read -r bundle_file; do
+                  test -f "${bundle_file}"
+                done < <(find "${channel_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
+              fi
+            done < <(find "${app_dir}" -mindepth 1 -maxdepth 2 -type d -name repo | sort)
+
+            if [ "${found_repo}" -eq 0 ]; then
+              echo "No channel repos found in ${app_dir}; bootstrap state is valid."
             fi
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
@@ -178,44 +183,43 @@ jobs:
           domain="$(head -n 1 CNAME | tr -d '[:space:]')"
           test -n "${domain}"
 
-          found_app=0
+          found_repo=0
           while IFS= read -r app_dir; do
-            if [ ! -d "${app_dir}/repo" ]; then
-              continue
-            fi
+            while IFS= read -r repo_dir; do
+              found_repo=1
+              channel_dir="$(dirname "${repo_dir}")"
 
-            found_app=1
+              found_ref=0
+              while IFS= read -r ref_file; do
+                found_ref=1
+                grep -q '^\[Flatpak Ref\]$' "${ref_file}"
+                grep -q '^Name=app/' "${ref_file}"
+                grep -q '^Branch=' "${ref_file}"
+                grep -q "^Url=https://${domain}/" "${ref_file}"
+                grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
+                grep -q '^SuggestRemoteName=' "${ref_file}"
+                grep -q '^IsRuntime=false$' "${ref_file}"
 
-            found_ref=0
-            while IFS= read -r ref_file; do
-              found_ref=1
-              grep -q '^\[Flatpak Ref\]$' "${ref_file}"
-              grep -q '^Name=app/' "${ref_file}"
-              grep -q '^Branch=' "${ref_file}"
-              grep -q "^Url=https://${domain}/" "${ref_file}"
-              grep -q '^RuntimeRepo=https://.*flatpakrepo$' "${ref_file}"
-              grep -q '^SuggestRemoteName=' "${ref_file}"
-              grep -q '^IsRuntime=false$' "${ref_file}"
+                if grep -q '^GPGKey=' "${ref_file}"; then
+                  grep -q '^NoGPGVerify=false$' "${ref_file}"
+                fi
+              done < <(find "${channel_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
 
-              if grep -q '^GPGKey=' "${ref_file}"; then
-                grep -q '^NoGPGVerify=false$' "${ref_file}"
+              if [ "${found_ref}" -eq 0 ]; then
+                echo "Missing published .flatpakref file(s) in ${channel_dir}" >&2
+                exit 1
               fi
-            done < <(find "${app_dir}" -mindepth 1 -maxdepth 1 -type f -name '*.flatpakref' | sort)
 
-            if [ "${found_ref}" -eq 0 ]; then
-              echo "Missing published .flatpakref file(s) in ${app_dir}" >&2
-              exit 1
-            fi
-
-            # Bundles are optional, but if present they must be Flatpak files.
-            if [ -d "${app_dir}/bundles" ]; then
-              while IFS= read -r bundle_file; do
-                test -f "${bundle_file}"
-              done < <(find "${app_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
-            fi
+              # Bundles are optional, but if present they must be Flatpak files.
+              if [ -d "${channel_dir}/bundles" ]; then
+                while IFS= read -r bundle_file; do
+                  test -f "${bundle_file}"
+                done < <(find "${channel_dir}/bundles" -mindepth 1 -maxdepth 1 -type f -name '*.flatpak' | sort)
+              fi
+            done < <(find "${app_dir}" -mindepth 1 -maxdepth 2 -type d -name repo | sort)
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
 
-          if [ "${found_app}" -eq 0 ]; then
+          if [ "${found_repo}" -eq 0 ]; then
             echo "No published app repos found under apps/; bootstrap state is valid."
           fi
 
@@ -255,7 +259,7 @@ jobs:
           mkdir -p ..//.publish-root
           rsync -a --exclude '.git' --exclude '.github' ./ ..//.publish-root/
 
-      - name: Build merged root repository
+      - name: Build merged root repository (Discover-ready)
         shell: bash
         run: |
           set -euxo pipefail
@@ -268,6 +272,7 @@ jobs:
           mkdir -p .tmp-merged-repo
           ostree --repo=.tmp-merged-repo init --mode=archive-z2
 
+          # Pull all app repos under apps/*/repo and apps/*/*/repo
           while IFS= read -r app_repo; do
             if [ ! -f "${app_repo}/config" ]; then
               echo "Invalid OSTree repo at ${app_repo}: missing config" >&2
@@ -282,12 +287,16 @@ jobs:
             grep -q '^mode=archive-z2$' "${app_repo}/config"
 
             ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
-          done < <(find apps -mindepth 2 -maxdepth 2 -type d -name repo | sort)
+          done < <(find apps -mindepth 2 -maxdepth 3 -type d -name repo | sort)
 
-          flatpak build-update-repo --generate-static-deltas --prune .tmp-merged-repo
+          # Generate summary, static deltas, and AppStream for Discover
+          flatpak build-update-repo \
+            --generate-static-deltas \
+            --generate-appstream \
+            --prune \
+            .tmp-merged-repo
 
-          # For bootstrap runs with no apps yet, appstream refs may be absent.
-          # Enforce appstream only when app refs are present.
+          # Enforce appstream only when app refs exist (your original logic)
           if ostree --repo=.tmp-merged-repo refs | grep -q '^app/'; then
             test -f .tmp-merged-repo/summary
             ostree --repo=.tmp-merged-repo refs | grep -q '^appstream/'
