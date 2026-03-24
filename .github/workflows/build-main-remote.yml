@@ -326,17 +326,29 @@ jobs:
           set -euxo pipefail
 
           cd .gh-pages
-          rsync -a --delete --exclude '.git' ../.publish-root/ ./
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add repo chillboio.flatpakrepo apps
+          for attempt in 1 2 3 4 5; do
+            rsync -a --delete --exclude '.git' ../.publish-root/ ./
+            git add repo chillboio.flatpakrepo apps
 
-          if git diff --cached --quiet; then
-            echo "No main remote updates to commit."
-            exit 0
-          fi
+            if git diff --cached --quiet; then
+              echo "No main remote updates to commit."
+              exit 0
+            fi
 
-          git commit -m "Update merged Flatpak remote"
-          git push origin gh-pages
+            git commit -m "Update merged Flatpak remote"
+            if git push origin gh-pages; then
+              exit 0
+            fi
+
+            if [ "${attempt}" -eq 5 ]; then
+              echo "Failed to push gh-pages after 5 attempts." >&2
+              exit 1
+            fi
+
+            echo "Push rejected (non-fast-forward). Retrying with latest gh-pages."
+            git fetch origin gh-pages
+            git reset --hard origin/gh-pages
+          done
