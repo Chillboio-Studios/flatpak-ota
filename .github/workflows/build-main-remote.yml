@@ -292,7 +292,6 @@ jobs:
           # Generate summary, static deltas, and AppStream for Discover
           flatpak build-update-repo \
             --generate-static-deltas \
-            --generate-appstream \
             --prune \
             .tmp-merged-repo
 
