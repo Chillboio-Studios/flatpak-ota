@@ -1,9 +1,0 @@
-[Flatpak Repo]
-Title=Chillboi Studios Flatpak Repository
-Url=https://flatpak-ota.chillboiostudios.com/repo/
-Homepage=https://github.com/Chillboio-Studios/flatpak-ota
-Comment=Official Chillboi Studios Flatpak OTA remote
-Description=Add this remote to browse, install, and auto-update Chillboi Studios Flatpak apps in Discover and Flatpak clients.
-DefaultBranch=stable
-SuggestRemoteName=chillboio
-NoGPGVerify=true
