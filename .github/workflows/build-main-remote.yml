@@ -35,10 +35,14 @@ jobs:
               continue
             fi
 
-            # A present app repo must be a valid OSTree archive-z2 repository.
+            # A present app repo must at least have config; objects may be absent
+            # in bootstrap placeholders before first publish.
             test -f "${app_dir}/repo/config"
-            test -d "${app_dir}/repo/objects"
             grep -q '^mode=archive-z2$' "${app_dir}/repo/config"
+
+            if [ ! -d "${app_dir}/repo/objects" ]; then
+              echo "No objects directory in ${app_dir}/repo (bootstrap placeholder)."
+            fi
 
             found_ref=0
             while IFS= read -r ref_file; do
@@ -263,9 +267,14 @@ jobs:
           ostree --repo=.tmp-merged-repo init --mode=archive-z2
 
           while IFS= read -r app_repo; do
-            if [ ! -f "${app_repo}/config" ] || [ ! -d "${app_repo}/objects" ]; then
-              echo "Invalid OSTree repo at ${app_repo}" >&2
+            if [ ! -f "${app_repo}/config" ]; then
+              echo "Invalid OSTree repo at ${app_repo}: missing config" >&2
               exit 1
+            fi
+
+            if [ ! -d "${app_repo}/objects" ]; then
+              echo "Skipping placeholder app repo at ${app_repo} (no objects yet)."
+              continue
             fi
 
             grep -q '^mode=archive-z2$' "${app_repo}/config"
