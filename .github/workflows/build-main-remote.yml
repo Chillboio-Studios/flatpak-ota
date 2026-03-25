@@ -331,6 +331,13 @@ jobs:
               --gpg-sign="${gpg_key_id}"
               --gpg-homedir="${GNUPGHOME}"
             )
+
+            # Sign all commits referenced in the merged repo so clients
+            # can verify commit signatures when pulling app refs.
+            while IFS= read -r ref_name; do
+              commit_id="$(ostree --repo=.tmp-merged-repo rev-parse "${ref_name}")"
+              ostree --repo=.tmp-merged-repo gpg-sign "${commit_id}" "${gpg_key_id}"
+            done < <(ostree --repo=.tmp-merged-repo refs)
           fi
 
           # Generate summary, static deltas, and AppStream for Discover
