@@ -287,6 +287,10 @@ jobs:
 
             grep -q '^mode=archive-z2$' "${app_repo}/config"
 
+            # Some pushed repos may not include empty refs directories.
+            # Older ostree versions can fail pull-local in that case.
+            mkdir -p "${app_repo}/refs/heads" "${app_repo}/refs/remotes"
+
             ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
           done < <(find apps -mindepth 2 -maxdepth 3 -type d -name repo | sort)
 
