@@ -2,9 +2,7 @@ name: Build Main Flatpak Remote
 
 on:
   push:
-    branches:
-      - main
-      - master
+    branches-ignore:
       - gh-pages
   pull_request:
   workflow_dispatch:
@@ -229,7 +227,7 @@ jobs:
   build-main-remote:
     needs:
       - sanity-check
-    if: github.event_name == 'workflow_dispatch' || github.ref_name == 'main' || github.ref_name == 'master'
+    if: github.event_name == 'workflow_dispatch' || github.ref_name != 'gh-pages'
     runs-on: ubuntu-latest
 
     steps:
