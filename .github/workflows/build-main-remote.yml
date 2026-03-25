@@ -169,6 +169,9 @@ jobs:
           # Bootstrap state (no published apps yet) is valid.
           if ostree --repo=repo refs | grep -q '^app/'; then
             test -f repo/summary
+            if grep -q '^GPGKey=' chillboio.flatpakrepo; then
+              test -f repo/summary.sig
+            fi
             ostree --repo=repo refs | grep -q '^appstream/'
           else
             echo "No published app refs yet; skipping strict Discover checks."
@@ -238,7 +241,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y flatpak ostree rsync git
+          sudo apt-get install -y flatpak ostree rsync git gnupg
 
       - name: Prepare gh-pages workspace
         shell: bash
@@ -289,11 +292,53 @@ jobs:
             ostree --repo=.tmp-merged-repo pull-local "${app_repo}"
           done < <(find apps -mindepth 2 -maxdepth 3 -type d -name repo | sort)
 
+          gpg_key_base64="${{ secrets.FLATPAK_REPO_GPG_KEY_BASE64 }}"
+          gpg_private_key="${{ secrets.FLATPAK_REPO_GPG_PRIVATE_KEY }}"
+          gpg_private_key_base64="${{ secrets.FLATPAK_REPO_GPG_PRIVATE_KEY_BASE64 }}"
+          gpg_key_id="${{ secrets.FLATPAK_REPO_GPG_KEY_ID }}"
+
+          build_update_args=(
+            --generate-static-deltas
+            --prune
+          )
+
+          if [ -n "${gpg_key_base64}" ]; then
+            if [ -z "${gpg_key_id}" ]; then
+              echo "FLATPAK_REPO_GPG_KEY_ID is required when FLATPAK_REPO_GPG_KEY_BASE64 is set." >&2
+              exit 1
+            fi
+
+            if [ -z "${gpg_private_key}" ] && [ -z "${gpg_private_key_base64}" ]; then
+              echo "A private signing key is required when GPG verification is enabled. Set FLATPAK_REPO_GPG_PRIVATE_KEY or FLATPAK_REPO_GPG_PRIVATE_KEY_BASE64." >&2
+              exit 1
+            fi
+
+            export GNUPGHOME
+            GNUPGHOME="$(mktemp -d)"
+            chmod 700 "${GNUPGHOME}"
+
+            if [ -n "${gpg_private_key_base64}" ]; then
+              printf '%s' "${gpg_private_key_base64}" | base64 -d > "${GNUPGHOME}/private.key"
+            else
+              printf '%s' "${gpg_private_key}" > "${GNUPGHOME}/private.key"
+            fi
+
+            gpg --batch --import "${GNUPGHOME}/private.key"
+
+            build_update_args+=(
+              --gpg-sign="${gpg_key_id}"
+              --gpg-homedir="${GNUPGHOME}"
+            )
+          fi
+
           # Generate summary, static deltas, and AppStream for Discover
           flatpak build-update-repo \
-            --generate-static-deltas \
-            --prune \
+            "${build_update_args[@]}" \
             .tmp-merged-repo
+
+          if [ -n "${gpg_key_base64}" ]; then
+            test -f .tmp-merged-repo/summary.sig
+          fi
 
           # Enforce appstream only when app refs exist (your original logic)
           if ostree --repo=.tmp-merged-repo refs | grep -q '^app/'; then
@@ -310,8 +355,6 @@ jobs:
             app_name="$(basename "${app_dir}")"
             echo "${app_name}" >> .publish-root/apps/index.txt
           done < <(find apps -mindepth 1 -maxdepth 1 -type d | sort)
-
-          gpg_key_base64="${{ secrets.FLATPAK_REPO_GPG_KEY_BASE64 }}"
 
           {
             echo "[Flatpak Repo]"
